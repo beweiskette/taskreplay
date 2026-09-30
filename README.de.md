@@ -22,7 +22,7 @@ Der Bericht zeigt pro Agent die Erfolgsquote, die mittlere Laufzeit, die mittler
 Voraussetzung sind Python 3.11 oder neuer und Git.
 
 ```
-git clone <dieses Repository> taskreplay
+git clone https://github.com/beweiskette/taskreplay.git
 cd taskreplay
 python -m venv .venv
 .venv/bin/python -m pip install -e .        # Windows: .venv\Scripts\python -m pip install -e .

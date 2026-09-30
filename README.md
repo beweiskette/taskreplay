@@ -22,7 +22,7 @@ The report shows, per agent, the pass rate, median time, median tokens and cost 
 Requires Python 3.11 or newer and git.
 
 ```
-git clone <this repository> taskreplay
+git clone https://github.com/beweiskette/taskreplay.git
 cd taskreplay
 python -m venv .venv
 .venv/bin/python -m pip install -e .        # Windows: .venv\Scripts\python -m pip install -e .
