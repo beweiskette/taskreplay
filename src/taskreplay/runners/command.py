@@ -37,6 +37,12 @@ class CommandRunner(Runner):
         if not isinstance(env, dict):
             raise RunnerConfigError(f"runner {self.name!r}: env must be a mapping")
 
+    def secret_values(self) -> list[str]:
+        from ..redact import is_secret_env_name
+
+        env = self.config.get("env") or {}
+        return [str(v) for k, v in env.items() if is_secret_env_name(str(k)) and v]
+
     def _paths(self, ctx: RunContext) -> tuple[Path, Path]:
         scratch = ctx.scratch_dir or ctx.workdir.parent
         return scratch / "prompt.txt", scratch / "usage.json"

@@ -158,7 +158,7 @@ Permissions are kept narrow. The Claude runner uses `acceptEdits`: file edits in
 
 Command runner placeholders: `{prompt_file}`, `{workdir}`, `{usage_file}`, `{timeout}`, `{task_id}`, `{attempt}`. Values are quoted for the platform shell. Write `{{` and `}}` for literal braces. The same values are exported as `TASKREPLAY_PROMPT_FILE`, `TASKREPLAY_WORKDIR`, `TASKREPLAY_USAGE_FILE`, `TASKREPLAY_TASK_ID`, `TASKREPLAY_ATTEMPT`. Options: `stdin: true` pipes the prompt on stdin, `env:` adds variables.
 
-Built-in agent loop options: `max_steps` (default 40), `command_timeout` (60 s), `allow_commands` (true), `request_timeout` (180 s), `temperature`, `max_output_chars` (20000), `system_prompt`.
+Built-in agent loop options: `max_steps` (default 40), `command_timeout` (60 s), `allow_commands` (true), `request_timeout` (180 s), `temperature`, `max_output_chars` (20000), `system_prompt`, `allow_secret_files` (list of glob patterns, see [Secrets](#secrets)).
 
 ## Running
 
@@ -206,10 +206,26 @@ taskreplay is a CLI, so either agent can call it. Useful patterns:
 
 When taskreplay itself runs inside a Claude Code session, it removes the `CLAUDECODE` variable from the environment of the `claude` child process so the child does not treat itself as nested. This was not tested with a live session. Both sessions use your quota.
 
+## Secrets
+
+The built-in `openai-compatible` loop keeps credentials away from the model:
+
+- `read_file` refuses files that usually hold credentials: `.env` and `.env.*` (but not `*.example`, `*.sample`, `*.template`, `*.dist`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*.kdbx`, SSH private keys such as `id_rsa` or `id_ed25519` (not `*.pub`), `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.htpasswd`, `credentials`, `credentials.json`, `service-account*.json`, and everything under `.ssh/`, `.gnupg/`, `.aws/` and `.docker/`. The check applies to the requested name and to the target of a symlink. Paths that leave the worktree, also through a symlink, are refused as before. To let the model read such a file, list a glob pattern under `allow_secret_files`, for example `allow_secret_files: [".env.test"]`.
+- `run_command` gets a copy of your environment without the variable named in `api_key_env` and without every variable whose name contains `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `PRIVATE`, plus a few known names such as `DATABASE_URL`. If the tests the agent runs need one of these variables, the agent does not see it. The scoring test command still runs with your full environment.
+- Tool output is redacted before it is sent to the model or written to the transcript: PEM private key blocks, `Bearer ...` tokens, `Authorization: Basic ...`, `sk-...` keys, GitHub tokens (`ghp_...`, `github_pat_...`), AWS access key ids (`AKIA...`, `ASIA...`), Google API keys, Slack and Hugging Face tokens, passwords in URLs (`https://user:password@host`), the literal value of the configured API key, and the literal values (8 characters or more) of secret-looking environment variables. Each match becomes `[REDACTED]`.
+- API requests never follow HTTP redirects. A 3xx answer ends the run with an error that names the target, so the `Authorization` header only goes to `base_url`. Point `base_url` at the final address.
+
+For every runner, taskreplay applies the same redaction to the task prompt, the agent log in `results/logs/`, the JSON lines in `results/*.jsonl` (error messages, test output) and the error column of the HTML report. The limits are listed below.
+
 ## Limitations
 
 - The agents in the worktree see your normal agent setup: the Claude runner loads your settings, `CLAUDE.md` files, hooks and plugins; Codex loads `~/.codex/config.toml`. That is realistic for "how does my setup do", but it means results differ between machines.
 - Worktrees are not sandboxes. They share the object database and refs with your repository, so an agent that runs `git branch -D` or `git push` inside the worktree acts on your repository. The `run_command` tool of the built-in loop starts in the worktree but can reach anything your user can. Run untrusted models in a container or VM.
+- Secret redaction works on patterns and known values. A password in a format none of the patterns knows, a secret split across lines, or an encoded secret passes through unchanged.
+- The `run_command` tool can still read any file your user can read, for example `cat .env` or a file outside the worktree. Only the output redaction applies there. Set `allow_commands: false`, or run the loop in a container, when the repository or the machine holds secrets.
+- The Claude, Codex and command runners pass your full environment to the agent, because those agents need their own credentials. What they send to their model is decided by the agent and its permission or sandbox settings, not by taskreplay.
+- Patches in `results/patches/` are stored unchanged so that they still apply. If an agent writes a secret into a file, the secret is in the patch.
+- The redaction of task prompts can change a prompt that deliberately contains a token-like example string.
 - The test command runs in your current environment. If your project is installed in editable mode from the main checkout, tests in the worktree may import the main checkout's code. Use a command that imports from the working directory (`python -m pytest` in a flat or `src` layout with a matching pytest config) or set up a per-worktree environment inside the test command.
 - The Codex event format (`turn.completed` usage, `item.completed` items) was implemented from the documented `codex exec --json` output and tested against recorded samples, not against a live Codex session. The Claude runner was likewise tested with recorded JSON and a stub executable. During development no paid agent or API was called; only `--help` of both CLIs was read.
 - Turn counts are not comparable between runners: Claude reports model turns, the Codex runner counts completed items, the built-in loop counts API calls.

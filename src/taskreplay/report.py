@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from .redact import default_literals, redact
+
 
 def load_results(paths: Iterable[str | Path]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
@@ -299,7 +301,7 @@ def render_html(records: list[dict[str, Any]], title: str = "taskreplay report")
         if r.get("tokens_in") is not None or r.get("tokens_out") is not None:
             tokens = f"{fmt_num(r.get('tokens_in') or 0)} / {fmt_num(r.get('tokens_out') or 0)}"
         oos = r.get("out_of_scope_files") or []
-        note = r.get("error") or ""
+        note = redact(r.get("error") or "", default_literals())  # also covers results written by older versions
         if oos:
             note = (note + " " if note else "") + "out of scope: " + ", ".join(oos)
         run_rows.append(

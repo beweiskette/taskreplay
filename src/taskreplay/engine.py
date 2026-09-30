@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import gitutil, scoring
+from . import gitutil, redact, scoring
 from .runners import AgentResult, RunContext, Runner
 from .tasks import Task
 
@@ -43,7 +43,7 @@ def describe_plan(runs: list[PlannedRun]) -> list[str]:
     for r in runs:
         ctx = RunContext(
             workdir=Path("<worktree>"),
-            prompt=r.task.full_prompt(),
+            prompt=redact.redact(r.task.full_prompt(), redact.default_literals(r.runner.secret_values())),
             timeout=r.task.timeout,
             task_id=r.task.id,
             attempt=r.attempt,
@@ -89,6 +89,8 @@ class Engine:
                 break
             self.log(f"[{i}/{len(runs)}] {planned.task.id} with {planned.runner.name} (attempt {planned.attempt})")
             record = self.run_one(planned)
+            # Nothing that looks like a secret goes into the results file or the report.
+            record = redact.redact_obj(record, redact.default_literals(planned.runner.secret_values()))
             records.append(record)
             with open(self.results_file, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -149,13 +151,14 @@ class Engine:
             record["error"] = f"cannot resolve base commit: {exc}"
             return record
         record["base_commit"] = base
+        literals = redact.default_literals(runner.secret_values())
         wt = gitutil.add_worktree(task.repo, base)
         try:
             scratch = wt.parent / "scratch"
             scratch.mkdir(exist_ok=True)
             ctx = RunContext(
                 workdir=wt,
-                prompt=task.full_prompt(),
+                prompt=redact.redact(task.full_prompt(), literals),
                 timeout=task.timeout,
                 task_id=task.id,
                 attempt=attempt,
@@ -182,7 +185,9 @@ class Engine:
                 record["model"] = result.model
             if result.extra:
                 record["extra"] = result.extra
-            (self.out_dir / "logs" / f"{run_id}.log").write_text(result.log or "", encoding="utf-8")
+            (self.out_dir / "logs" / f"{run_id}.log").write_text(
+                redact.redact(result.log or "", literals), encoding="utf-8"
+            )
 
             diff = gitutil.diff_against(wt, base)
             record.update(

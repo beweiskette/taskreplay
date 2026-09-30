@@ -71,6 +71,14 @@ class Runner:
     def run(self, ctx: RunContext) -> AgentResult:  # pragma: no cover - abstract
         raise NotImplementedError
 
+    def secret_values(self) -> list[str]:
+        """Literal secret values this runner knows about (for example its API key).
+
+        taskreplay removes them from logs and result files, in addition to
+        secret-looking patterns and secret environment variables.
+        """
+        return []
+
     def estimate_cost(self, result: AgentResult) -> None:
         """Fill cost_usd from configured prices when the agent reported none."""
         if result.cost_usd is not None:
